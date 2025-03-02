@@ -1,10 +1,14 @@
 import { bangs } from "../bang";
 import { loadSettings } from "./settings";
+import { getCombinedBangs } from "./bangUtils";
 
-// Get default bang from settings module instead of direct localStorage access
+// Get combined bangs (default + custom)
 const userSettings = loadSettings();
-const defaultBang = bangs.find((b) => b.t === userSettings.defaultBang) || 
-  bangs.find((b) => b.t === "g"); // Fallback to Google if not found
+const combinedBangs = getCombinedBangs(userSettings);
+
+// Get default bang from settings module
+const defaultBang = combinedBangs.find((b) => b.t === userSettings.defaultBang) || 
+  combinedBangs.find((b) => b.t === "g"); // Fallback to Google if not found
 
 /**
  * Array of recursive function jokes
@@ -73,17 +77,22 @@ export function getBangRedirectUrl(): string | null {
   const bangCandidate = match?.[1]?.toLowerCase();
   console.log("Bang candidate:", bangCandidate);
   
-  const selectedBang = bangs.find((b) => b.t === bangCandidate) ?? defaultBang;
+  // Refresh the combined bangs list to ensure we have the latest custom bangs
+  const latestSettings = loadSettings();
+  const latestCombinedBangs = getCombinedBangs(latestSettings);
+  
+  const selectedBang = latestCombinedBangs.find((b) => b.t === bangCandidate) ?? defaultBang;
   console.log("Selected bang:", selectedBang?.t);
 
   // Remove the first bang from the query
   const cleanQuery = query.replace(/!\S+\s*/i, "").trim();
   console.log("Clean query:", cleanQuery);
 
-  // Format of the url is:
-  // https://www.google.com/search?q={{{s}}}
+  // Format of the url can be either:
+  // https://www.google.com/search?q={{{s}}} (original format)
+  // https://www.google.com/search?q={searchTerms} (new format for custom bangs)
   const searchUrl = selectedBang?.u.replace(
-    "{{{s}}}",
+    /{{{s}}}|{searchTerms}/g,
     // Replace %2F with / to fix formats like "!ghr+t3dotgg/unduck"
     encodeURIComponent(cleanQuery).replace(/%2F/g, "/")
   );

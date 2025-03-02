@@ -1,14 +1,18 @@
 //Credit to https://github.com/Desyncfy for his contribution to using localStorage for settings.
 
+import { BangItem } from "../types/BangItem";
+
 // Settings interface that defines all available user preferences
 export interface UserSettings {
   defaultBang?: string;  // The user's preferred default bang (e.g., "g" for Google)
+  customBangs: BangItem[];  // Custom user-defined bangs
   // Add more settings here as needed
 }
 
 // Default settings values
 export const DEFAULT_SETTINGS: UserSettings = {
   defaultBang: undefined,
+  customBangs: [],
 };
 
 // Settings key in local storage

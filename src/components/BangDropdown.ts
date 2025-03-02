@@ -1,7 +1,8 @@
 import { createElement } from "../utils/dom";
 import { bangs } from "../bang";
-import { filterAndSortBangs } from "../utils/bangUtils";
+import { filterAndSortBangs, getCombinedBangs } from "../utils/bangUtils";
 import { BangItem } from "../types/BangItem";
+import { loadSettings } from "../utils/settings";
 
 export interface BangDropdownOptions {
   maxItems?: number;
@@ -19,6 +20,8 @@ export class BangDropdown {
   private inputElement: HTMLInputElement;
   private options: BangDropdownOptions;
   private filteredBangs: BangItem[] = [];
+  private documentClickHandler: (e: MouseEvent) => void;
+  private tabKeyHandler: (e: KeyboardEvent) => void;
   
   constructor(inputElement: HTMLInputElement, options: BangDropdownOptions = {}) {
     this.inputElement = inputElement;
@@ -29,7 +32,7 @@ export class BangDropdown {
     };
     
     // Setup click handler on document to close dropdown when clicking outside
-    document.addEventListener("click", (e) => {
+    this.documentClickHandler = (e: MouseEvent) => {
       if (!this.isVisible) return;
       
       const target = e.target as Node;
@@ -40,10 +43,10 @@ export class BangDropdown {
       ) {
         this.hide();
       }
-    });
+    };
     
     // Add Tab key handler to select top option
-    this.inputElement.addEventListener("keydown", (e) => {
+    this.tabKeyHandler = (e: KeyboardEvent) => {
       if (e.key === "Tab" && this.isVisible && this.filteredBangs.length > 0) {
         e.preventDefault(); // Prevent default tab behavior
         
@@ -54,7 +57,11 @@ export class BangDropdown {
           this.selectTopOption();
         }
       }
-    });
+    };
+    
+    // Attach event listeners
+    document.addEventListener("click", this.documentClickHandler);
+    this.inputElement.addEventListener("keydown", this.tabKeyHandler);
     
     // Add window resize handler for fixed positioning
     if (options.positionStyle === 'fixed' && options.appendTo) {
@@ -77,8 +84,12 @@ export class BangDropdown {
   }
   
   public show(query: string): void {
+    // Get combined bangs (default + custom)
+    const settings = loadSettings();
+    const combinedBangs = getCombinedBangs(settings);
+    
     // Use the new utility function to filter and sort bangs
-    this.filteredBangs = filterAndSortBangs(bangs, query, this.options.maxItems);
+    this.filteredBangs = filterAndSortBangs(combinedBangs, query, this.options.maxItems);
     
     if (this.filteredBangs.length === 0) {
       this.hide();
@@ -294,5 +305,25 @@ export class BangDropdown {
         footer.classList.remove('footer-blurred');
       }
     }
+  }
+  
+  /**
+   * Properly disposes the dropdown and removes all event listeners
+   */
+  public dispose(): void {
+    // Remove global event listeners
+    document.removeEventListener("click", this.documentClickHandler);
+    
+    // Remove input element event listeners
+    if (this.inputElement) {
+      this.inputElement.removeEventListener("keydown", this.tabKeyHandler);
+    }
+    
+    // Hide and remove the dropdown from DOM
+    this.hide();
+    
+    // Clear references
+    this.container = null;
+    this.filteredBangs = [];
   }
 } 

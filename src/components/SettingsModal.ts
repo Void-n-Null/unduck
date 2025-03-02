@@ -6,9 +6,10 @@ import {
   updateSetting,
   UserSettings 
 } from "../utils/settings";
-import { filterAndSortBangs } from "../utils/bangUtils";
+import { filterAndSortBangs, getCombinedBangs } from "../utils/bangUtils";
 import { BangItem } from "../types/BangItem";
 import { BangDropdown } from "./BangDropdown";
+import { CustomBangManager } from "./CustomBangManager";
 
 export class SettingsModal {
   private modal: HTMLDivElement | null = null;
@@ -21,6 +22,7 @@ export class SettingsModal {
   private defaultBangInput: HTMLInputElement | null = null;
   private bangDropdown: BangDropdown | null = null;
   private selectedBangItem: BangItem | null = null;
+  private customBangManager: CustomBangManager;
   
   // Define the handleEscKey method earlier to fix reference errors
   private handleEscKey = (e: KeyboardEvent): void => {
@@ -32,7 +34,22 @@ export class SettingsModal {
   constructor(onSettingsChange: (settings: UserSettings) => void = () => {}) {
     this.settings = loadSettings();
     this.onSettingsChange = onSettingsChange;
+    this.customBangManager = new CustomBangManager(this.handleCustomBangsChange);
   }
+  
+  /**
+   * Handle changes to custom bangs
+   */
+  private handleCustomBangsChange = (updatedSettings: UserSettings): void => {
+    this.settings = updatedSettings;
+    this.onSettingsChange(this.settings);
+    
+    // If the bang dropdown is open, refresh it with the new combined bangs
+    if (this.bangDropdown && this.defaultBangInput) {
+      const query = this.defaultBangInput.value.toLowerCase().replace(/^!/, '') || '';
+      this.bangDropdown.show(query);
+    }
+  };
   
   /**
    * Creates and shows the settings modal
@@ -189,6 +206,9 @@ export class SettingsModal {
     let inputValue = this.defaultBangInput.value.trim();
     console.log("Processing input value:", inputValue);
     
+    // Get combined bangs (default + custom)
+    const combinedBangs = getCombinedBangs(this.settings);
+    
     // If we already have a selected bang item, use it
     if (this.selectedBangItem) {
       console.log("Using selected bang item:", this.selectedBangItem.t);
@@ -199,7 +219,7 @@ export class SettingsModal {
     // Handle empty input - default to Google
     if (!inputValue) {
       console.log("Empty input, defaulting to Google");
-      const googleBang = bangs.find(b => b.s.toLowerCase() === 'google' && b.t === 'g');
+      const googleBang = combinedBangs.find(b => b.s.toLowerCase() === 'google' && b.t === 'g');
       if (googleBang) {
         this.settings.defaultBang = googleBang.t;
         this.selectedBangItem = googleBang;
@@ -213,7 +233,7 @@ export class SettingsModal {
     console.log("Cleaned input value:", inputValue);
     
     // First try direct match with bang shortcode
-    const directMatch = bangs.find(b => b.t.toLowerCase() === inputValue.toLowerCase());
+    const directMatch = combinedBangs.find(b => b.t.toLowerCase() === inputValue.toLowerCase());
     if (directMatch) {
       console.log("Direct match found:", directMatch.t);
       this.settings.defaultBang = directMatch.t;
@@ -224,7 +244,7 @@ export class SettingsModal {
     
     // If no direct match, use the filtering logic
     console.log("No direct match, using filter and sort");
-    const matchedBangs = filterAndSortBangs(bangs, inputValue, 1);
+    const matchedBangs = filterAndSortBangs(combinedBangs, inputValue, 1);
     console.log("Matched bangs:", matchedBangs.length > 0 ? matchedBangs[0].t : "none");
     
     if (matchedBangs.length > 0) {
@@ -235,7 +255,7 @@ export class SettingsModal {
     } else {
       // If no match found and input is not empty, try to match by service name
       console.log("No filter match, trying service name match");
-      const serviceMatch = bangs.find(b => 
+      const serviceMatch = combinedBangs.find(b => 
         b.s.toLowerCase().includes(inputValue.toLowerCase())
       );
       
@@ -247,7 +267,7 @@ export class SettingsModal {
       } else {
         // Still no match, default to Google
         console.log("No match found, defaulting to Google");
-        const googleBang = bangs.find(b => b.s.toLowerCase() === 'google' && b.t === 'g');
+        const googleBang = combinedBangs.find(b => b.s.toLowerCase() === 'google' && b.t === 'g');
         if (googleBang) {
           this.settings.defaultBang = googleBang.t;
           this.selectedBangItem = googleBang;
@@ -273,6 +293,24 @@ export class SettingsModal {
       className: 'text-white/70 text-sm mb-3'
     }, ['When set, this bang will be used automatically if you search without specifying a bang.']);
 
+    // Create custom bangs button
+    const customBangsButtonContainer = createElement('div', {
+      className: 'mb-3 flex justify-end'
+    });
+    
+    const customBangsButton = createElement('button', {
+      className: 'text-[#3a86ff] hover:text-[#2a76ef] text-sm underline flex items-center gap-1',
+      type: 'button'
+    }, [
+      'Manage Custom Bangs'
+    ]);
+    
+    customBangsButton.addEventListener('click', () => {
+      this.customBangManager.show();
+    });
+    
+    customBangsButtonContainer.appendChild(customBangsButton);
+    
     // Create input wrapper for relative positioning
     const inputWrapper = createElement('div', {
       className: 'relative mb-2'
@@ -289,7 +327,8 @@ export class SettingsModal {
     
     // Display the current default bang if set
     if (this.settings.defaultBang) {
-      const matchingBang = bangs.find(b => b.t === this.settings.defaultBang);
+      const combinedBangs = getCombinedBangs(this.settings);
+      const matchingBang = combinedBangs.find(b => b.t === this.settings.defaultBang);
       if (matchingBang) {
         this.defaultBangInput.value = `!${matchingBang.t} - ${matchingBang.s}`;
         this.selectedBangItem = matchingBang;
@@ -317,7 +356,7 @@ export class SettingsModal {
     
     // Append elements to input wrapper
     inputWrapper.append(this.defaultBangInput, clearButton);
-    section.append(label, description, inputWrapper);
+    section.append(label, description, customBangsButtonContainer, inputWrapper);
     
     // Initialize the BangDropdown component
     if (this.defaultBangInput) {

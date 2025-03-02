@@ -1,4 +1,31 @@
 import { BangItem } from "../types/BangItem";
+import { UserSettings } from "./settings";
+import { bangs as defaultBangs } from "../bang";
+
+/**
+ * Combines default bangs with user's custom bangs
+ * Custom bangs with the same trigger as default bangs will override them
+ * 
+ * @param settings User settings containing custom bangs
+ * @returns Combined array of bangs with custom bangs taking precedence
+ */
+export function getCombinedBangs(settings: UserSettings): BangItem[] {
+  if (!settings.customBangs || settings.customBangs.length === 0) {
+    return defaultBangs;
+  }
+
+  // Create a map of custom bangs by trigger for quick lookup
+  const customBangMap = new Map<string, BangItem>();
+  settings.customBangs.forEach(bang => {
+    customBangMap.set(bang.t, bang);
+  });
+
+  // Filter out default bangs that have been overridden by custom bangs
+  const filteredDefaultBangs = defaultBangs.filter(bang => !customBangMap.has(bang.t));
+
+  // Combine the filtered default bangs with custom bangs
+  return [...filteredDefaultBangs, ...settings.customBangs];
+}
 
 /**
  * Filters and sorts bangs based on a search query

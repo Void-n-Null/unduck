@@ -3,14 +3,19 @@ import { BangDropdown } from "./BangDropdown";
 import { SettingsModal } from "./SettingsModal";
 import { loadSettings, UserSettings } from "../utils/settings";
 import { getUrlParameters } from "../utils/redirect";
+import { CustomBangManager } from "./CustomBangManager";
+import { getCombinedBangs } from "../utils/bangUtils";
+import { BangItem } from "../types/BangItem";
 
 export class SearchForm {
   private container: HTMLDivElement;
   private form: HTMLFormElement;
   private searchInput: HTMLInputElement;
-  private bangDropdown: BangDropdown;
+  private bangDropdown: BangDropdown | null = null;
   private settingsModal: SettingsModal;
+  private customBangManager: CustomBangManager;
   private settings: UserSettings;
+  private selectedBangItem: any;
   
   constructor() {
     // Load user settings
@@ -21,11 +26,6 @@ export class SearchForm {
       className: 'w-full mt-10 pt-6 border-t border-white/10 relative' 
     });
     
-    // Create search heading with Tailwind classes - more appealing typography
-    const searchHeading = createElement('h2', { 
-      className: 'text-2xl md:text-3xl font-semibold mb-5 text-white/90 drop-shadow-sm flex items-center justify-between' 
-    }, ['Test it now']);
-    
     // Check if this is a recursive query - use custom function for URL parameters
     const urlParams = getUrlParameters();
     const isRecursive = urlParams.get("recursive") === "true";
@@ -33,16 +33,42 @@ export class SearchForm {
     
     console.log("SearchForm constructor - Is Recursive:", isRecursive, "Query:", query);
     
-    if (isRecursive && query) {
-      console.log("Updating search heading for recursive mode");
-      // For recursive mode, make the heading more subtle
-      searchHeading.textContent = "Your query:";
-      searchHeading.className = 'text-lg font-medium text-[#a788ff]/70 mb-3 flex items-center justify-between';
-    }
+    // Create a heading that shows when in recursive mode and normal mode
+    const searchHeading = createElement('h2', {
+      className: 'mb-6 text-white text-2xl font-light text-center tracking-wider',
+    }, [isRecursive ? 'Processing recursive search...' : 'Search with !Bangs']);
+    
+    // Create buttons container for action buttons
+    const buttonsContainer = createElement('div', {
+      className: 'flex items-center gap-2'
+    });
+    
+    // Add custom bangs button
+    const customBangsButton = createElement('button', {
+      className: 'text-white/50 hover:text-white/90 transition-colors px-3 py-1 rounded-full hover:bg-white/10 flex items-center'
+    }, [
+      'My Bangs',
+      createElement('span', { className: 'ml-1' }, ['+'])
+    ]);
+    
+    // Initialize custom bang manager
+    this.customBangManager = new CustomBangManager((newSettings) => {
+      // Update local settings when custom bangs change
+      this.settings = newSettings;
+      
+      // Re-initialize bang dropdown when settings change
+      // This ensures the dropdown works properly after deleting a custom bang
+      this.reinitializeBangDropdown();
+    });
+    
+    // Add click event for custom bangs button
+    customBangsButton.addEventListener('click', () => {
+      this.customBangManager.show();
+    });
     
     // Add settings gear icon
     const settingsIcon = createElement('button', {
-      className: 'text-white/50 hover:text-white/90 transition-colors ml-3 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10'
+      className: 'text-white/50 hover:text-white/90 transition-colors w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10'
     });
     
     // Add settings icon image
@@ -65,8 +91,11 @@ export class SearchForm {
       this.settingsModal.toggle();
     });
     
-    // Add settings icon to heading
-    searchHeading.appendChild(settingsIcon);
+    // Add buttons to container
+    buttonsContainer.append(customBangsButton, settingsIcon);
+    
+    // Add buttons container to heading
+    searchHeading.appendChild(buttonsContainer);
     
     // Create search form with Tailwind classes - integrated design
     this.form = createElement('form', { 
@@ -103,6 +132,11 @@ export class SearchForm {
       autocomplete: 'off',
       spellcheck: 'false',
       autocapitalize: 'off'
+    });
+    
+    // Initialize the bang dropdown early
+    this.bangDropdown = new BangDropdown(this.searchInput, {
+      onSelectBang: (bangText) => this.handleBangSelection(bangText)
     });
     
     // Assemble the search components
@@ -173,11 +207,6 @@ export class SearchForm {
       }
     });
     
-    // Initialize the bang dropdown
-    this.bangDropdown = new BangDropdown(this.searchInput, {
-      onSelectBang: (bangText) => this.handleBangSelection(bangText)
-    });
-    
     // Add event listeners for bang autocomplete
     this.setupBangAutocomplete();
   }
@@ -189,15 +218,34 @@ export class SearchForm {
       
       if (bangMatch) {
         const bangQuery = bangMatch[1].toLowerCase();
-        this.bangDropdown.show(bangQuery);
+        
+        // Try to match the current input with combined bangs from utils function
+        if (bangQuery.length > 0) {
+          // Import the function at the top level, not from this
+          const combinedBangs = getCombinedBangs(this.settings);
+          const directMatch = combinedBangs.find((b: BangItem) => b.t.toLowerCase() === bangQuery);
+          if (directMatch) {
+            // Store the match for use when form is submitted
+            this.selectedBangItem = directMatch;
+          }
+        }
+        
+        // Null check before using bangDropdown
+        if (this.bangDropdown) {
+          this.bangDropdown.show(bangQuery);
+        }
       } else {
-        this.bangDropdown.hide();
+        // Null check before using bangDropdown
+        if (this.bangDropdown) {
+          this.bangDropdown.hide();
+        }
       }
     });
     
     // Handle keyboard navigation in dropdown
     this.searchInput.addEventListener("keydown", (e) => {
-      if (!this.bangDropdown.isDropdownVisible()) return;
+      // Null check before using bangDropdown
+      if (!this.bangDropdown || !this.bangDropdown.isDropdownVisible()) return;
       
       switch (e.key) {
         case "ArrowDown":
@@ -282,5 +330,49 @@ export class SearchForm {
       
       this.searchInput.focus();
     }, 100);
+  }
+  
+  /**
+   * Reinitializes the bang dropdown when settings are changed
+   * This ensures the dropdown is refreshed after custom bangs are added or removed
+   */
+  private reinitializeBangDropdown(): void {
+    // Properly dispose the existing dropdown to clean up event listeners
+    if (this.bangDropdown) {
+      this.bangDropdown.dispose(); // Use the new dispose method to clean up
+      this.bangDropdown = null;
+    }
+
+    // Remove any existing event listeners from the search input
+    const oldInput = this.searchInput;
+    const parent = oldInput.parentElement;
+    
+    // Create a new input element with the same properties
+    const newInput = createElement('input', {
+      type: 'text',
+      placeholder: oldInput.placeholder,
+      className: oldInput.className,
+      autocomplete: 'off',
+      spellcheck: 'false',
+      autocapitalize: 'off',
+      value: oldInput.value
+    }) as HTMLInputElement;
+    
+    // Replace the old input with the new one
+    if (parent) {
+      parent.replaceChild(newInput, oldInput);
+      this.searchInput = newInput;
+    }
+    
+    // Reinitialize the bang dropdown with the new input
+    this.bangDropdown = new BangDropdown(this.searchInput, {
+      onSelectBang: (bangText) => this.handleBangSelection(bangText)
+    });
+    
+    // Reattach event listeners to the new input
+    this.setupBangAutocomplete();
+    
+    // Focus the new input
+    this.searchInput.focus();
   }
 } 
