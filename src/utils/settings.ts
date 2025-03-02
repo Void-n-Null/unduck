@@ -1,3 +1,5 @@
+//Credit to https://github.com/Desyncfy for his contribution to using localStorage for settings.
+
 // Settings interface that defines all available user preferences
 export interface UserSettings {
   defaultBang?: string;  // The user's preferred default bang (e.g., "g" for Google)
@@ -9,43 +11,48 @@ export const DEFAULT_SETTINGS: UserSettings = {
   defaultBang: undefined,
 };
 
-// Settings key in cookies
-const SETTINGS_COOKIE_KEY = 'unduck_settings';
+// Settings key in local storage
+const SETTINGS_STORAGE_KEY = 'rebang_settings';
 
 /**
- * Saves user settings to cookies
+ * Saves user settings to local storage
  * @param settings The settings object to save
- * @param expirationDays Number of days until the cookie expires (default: 365)
+ * @param expirationDays Number of days until the settings expire (default: 365)
  */
 export function saveSettings(settings: UserSettings, expirationDays = 365): void {
   try {
-    // Create expiration date
-    const date = new Date();
-    date.setTime(date.getTime() + (expirationDays * 24 * 60 * 60 * 1000));
-    const expires = `expires=${date.toUTCString()}`;
+    // Add expiration timestamp if specified
+    const expirationTimestamp = expirationDays > 0 
+      ? Date.now() + (expirationDays * 24 * 60 * 60 * 1000)
+      : null;
     
-    // Serialize settings to JSON and store in cookie
-    const settingsJson = JSON.stringify(settings);
-    document.cookie = `${SETTINGS_COOKIE_KEY}=${encodeURIComponent(settingsJson)};${expires};path=/;SameSite=Strict`;
+    const dataToStore = {
+      settings,
+      expires: expirationTimestamp
+    };
+    
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(dataToStore));
   } catch (error) {
     console.error('Failed to save settings:', error);
   }
 }
 
 /**
- * Loads user settings from cookies
+ * Loads user settings from local storage
  * @returns The user settings object, or default settings if not found
  */
 export function loadSettings(): UserSettings {
   try {
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-      const [name, value] = cookie.trim().split('=');
-      if (name === SETTINGS_COOKIE_KEY && value) {
-        return { 
-          ...DEFAULT_SETTINGS, 
-          ...JSON.parse(decodeURIComponent(value))
-        };
+    const storedData = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (storedData) {
+      const parsedData = JSON.parse(storedData);
+      
+      // Check if settings have expired (if expiration is set)
+      if (!parsedData.expires || parsedData.expires > Date.now()) {
+        return { ...DEFAULT_SETTINGS, ...parsedData.settings };
+      } else {
+        // Clear expired settings
+        localStorage.removeItem(SETTINGS_STORAGE_KEY);
       }
     }
   } catch (error) {
@@ -56,7 +63,7 @@ export function loadSettings(): UserSettings {
 }
 
 /**
- * Updates a specific setting value and saves to cookies
+ * Updates a specific setting value and saves to local storage
  * @param key The setting key to update
  * @param value The new value
  */

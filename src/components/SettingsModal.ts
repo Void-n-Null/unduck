@@ -6,7 +6,8 @@ import {
   updateSetting,
   UserSettings 
 } from "../utils/settings";
-import { BangItem } from "../utils/bangUtils";
+import { BangItem, filterAndSortBangs } from "../utils/bangUtils";
+import { BangDropdown } from "./BangDropdown";
 
 export class SettingsModal {
   private modal: HTMLDivElement | null = null;
@@ -17,7 +18,7 @@ export class SettingsModal {
   
   // UI elements for default bang setting
   private defaultBangInput: HTMLInputElement | null = null;
-  private defaultBangDropdown: HTMLDivElement | null = null;
+  private bangDropdown: BangDropdown | null = null;
   private selectedBangItem: BangItem | null = null;
   
   // Define the handleEscKey method earlier to fix reference errors
@@ -60,8 +61,10 @@ export class SettingsModal {
   public hide(): void {
     if (!this.overlay) return;
     
-    // Hide the dropdown first
-    this.hideBangDropdown();
+    // Hide the dropdown if visible
+    if (this.bangDropdown) {
+      this.bangDropdown.hide();
+    }
     
     // Apply fade-out animation
     this.overlay.style.opacity = '0';
@@ -73,9 +76,6 @@ export class SettingsModal {
         document.body.removeChild(this.overlay);
       }
       this.isVisible = false;
-      
-      // Clean up the dropdown when hiding the modal
-      this.cleanup();
     }, 300);
     
     // Remove ESC key handler
@@ -155,14 +155,11 @@ export class SettingsModal {
       type: 'button'
     }, ['Save Settings']);
     saveButton.addEventListener('click', () => {
+      // Process the input to find the best match or default to Google
+      this.processAndSaveBangSetting();
+      
+      // Save all settings
       saveSettings(this.settings);
-      // Save default bang to local storage if set
-      if (this.settings.defaultBang) {
-        localStorage.setItem('defaultBang', this.settings.defaultBang);
-      } else {
-        localStorage.removeItem('defaultBang'); // Remove if not set to fall back on default
-      }
-
       this.onSettingsChange(this.settings);
       this.hide();
     });
@@ -179,6 +176,84 @@ export class SettingsModal {
         this.hide();
       }
     });
+  }
+  
+  /**
+   * Process the input and save the best matching bang setting
+   * If input is empty, defaults to Google
+   */
+  private processAndSaveBangSetting(): void {
+    if (!this.defaultBangInput) return;
+    
+    let inputValue = this.defaultBangInput.value.trim();
+    console.log("Processing input value:", inputValue);
+    
+    // If we already have a selected bang item, use it
+    if (this.selectedBangItem) {
+      console.log("Using selected bang item:", this.selectedBangItem.t);
+      this.settings.defaultBang = this.selectedBangItem.t;
+      return;
+    }
+    
+    // Handle empty input - default to Google
+    if (!inputValue) {
+      console.log("Empty input, defaulting to Google");
+      const googleBang = bangs.find(b => b.s.toLowerCase() === 'google' && b.t === 'g');
+      if (googleBang) {
+        this.settings.defaultBang = googleBang.t;
+        this.selectedBangItem = googleBang;
+        this.defaultBangInput.value = `!${googleBang.t} - ${googleBang.s}`;
+      }
+      return;
+    }
+    
+    // Remove exclamation point and anything after hyphen or dash
+    inputValue = inputValue.replace(/^!/, '').split(/[-–]/)[0].trim();
+    console.log("Cleaned input value:", inputValue);
+    
+    // First try direct match with bang shortcode
+    const directMatch = bangs.find(b => b.t.toLowerCase() === inputValue.toLowerCase());
+    if (directMatch) {
+      console.log("Direct match found:", directMatch.t);
+      this.settings.defaultBang = directMatch.t;
+      this.selectedBangItem = directMatch;
+      this.defaultBangInput.value = `!${directMatch.t} - ${directMatch.s}`;
+      return;
+    }
+    
+    // If no direct match, use the filtering logic
+    console.log("No direct match, using filter and sort");
+    const matchedBangs = filterAndSortBangs(bangs, inputValue, 1);
+    console.log("Matched bangs:", matchedBangs.length > 0 ? matchedBangs[0].t : "none");
+    
+    if (matchedBangs.length > 0) {
+      const bestMatch = matchedBangs[0];
+      this.settings.defaultBang = bestMatch.t;
+      this.selectedBangItem = bestMatch;
+      this.defaultBangInput.value = `!${bestMatch.t} - ${bestMatch.s}`;
+    } else {
+      // If no match found and input is not empty, try to match by service name
+      console.log("No filter match, trying service name match");
+      const serviceMatch = bangs.find(b => 
+        b.s.toLowerCase().includes(inputValue.toLowerCase())
+      );
+      
+      if (serviceMatch) {
+        console.log("Service match found:", serviceMatch.t);
+        this.settings.defaultBang = serviceMatch.t;
+        this.selectedBangItem = serviceMatch;
+        this.defaultBangInput.value = `!${serviceMatch.t} - ${serviceMatch.s}`;
+      } else {
+        // Still no match, default to Google
+        console.log("No match found, defaulting to Google");
+        const googleBang = bangs.find(b => b.s.toLowerCase() === 'google' && b.t === 'g');
+        if (googleBang) {
+          this.settings.defaultBang = googleBang.t;
+          this.selectedBangItem = googleBang;
+          this.defaultBangInput.value = `!${googleBang.t} - ${googleBang.s}`;
+        }
+      }
+    }
   }
   
   /**
@@ -220,25 +295,6 @@ export class SettingsModal {
       }
     }
     
-    // Create dropdown container (hidden initially)
-    this.defaultBangDropdown = createElement('div', {
-      className: 'fixed z-[1001] bg-black/90 border border-white/10 rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-y-auto max-h-60 hidden scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent',
-      style: 'background: linear-gradient(to bottom, rgba(45, 0, 30, 0.9), rgba(0, 0, 0, 0.95));'
-    });
-    
-    // Append the dropdown to the document body instead
-    document.body.appendChild(this.defaultBangDropdown);
-    
-    // Add input event handler for showing dropdown
-    this.defaultBangInput.addEventListener('input', () => {
-      this.showBangDropdown();
-    });
-    
-    // Add focus event handler
-    this.defaultBangInput.addEventListener('focus', () => {
-      this.showBangDropdown();
-    });
-    
     // Add clear button for removing the default bang
     const clearButton = createElement('button', {
       type: 'button',
@@ -250,259 +306,78 @@ export class SettingsModal {
         this.defaultBangInput.value = '';
         this.selectedBangItem = null;
         this.settings.defaultBang = undefined;
-        this.hideBangDropdown();
-      }
-    });
-    
-    // Add keyboard navigation for dropdown
-    this.defaultBangInput.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (!this.defaultBangDropdown || this.defaultBangDropdown.style.display === 'none') return;
-      
-      const items = this.defaultBangDropdown.querySelectorAll('.bang-option');
-      if (items.length === 0) return;
-      
-      const highlightedItem = this.defaultBangDropdown.querySelector('.bg-[#2a004d]/70');
-      const highlightedIndex = highlightedItem ? Array.from(items).indexOf(highlightedItem) : -1;
-      
-      switch (e.key) {
-        case 'ArrowDown':
-          e.preventDefault();
-          this.navigateDropdown(highlightedIndex, 1, items);
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          this.navigateDropdown(highlightedIndex, -1, items);
-          break;
-        case 'Enter':
-        case 'Tab':
-          e.preventDefault();
-          if (highlightedItem) {
-            (highlightedItem as HTMLElement).click();
-          } else if (items.length > 0) {
-            (items[0] as HTMLElement).click();
-          }
-          break;
-        case 'Escape':
-          this.hideBangDropdown();
-          break;
-      }
-    });
-    
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e: MouseEvent) => {
-      if (this.defaultBangDropdown && this.defaultBangDropdown.style.display !== 'none') {
-        const target = e.target as Node;
-        if (
-          !this.defaultBangDropdown.contains(target) && 
-          target !== this.defaultBangInput
-        ) {
-          this.hideBangDropdown();
+        
+        // Hide dropdown if visible
+        if (this.bangDropdown) {
+          this.bangDropdown.hide();
         }
       }
     });
     
-    // Append elements to input wrapper - don't append dropdown here anymore
+    // Append elements to input wrapper
     inputWrapper.append(this.defaultBangInput, clearButton);
     section.append(label, description, inputWrapper);
+    
+    // Initialize the BangDropdown component
+    if (this.defaultBangInput) {
+      this.bangDropdown = new BangDropdown(this.defaultBangInput, {
+        maxItems: 10,
+        maxHeight: '35vh',
+        onSelectBang: (bangText) => this.handleBangSelection(bangText),
+        appendTo: document.body,
+        positionStyle: 'fixed',
+        zIndex: 1000
+      });
+      
+      // Add input event handler for showing dropdown and real-time matching
+      this.defaultBangInput.addEventListener('input', () => {
+        const query = this.defaultBangInput?.value.toLowerCase().replace(/^!/, '') || '';
+        
+        // Try to match the current input and update selectedBangItem in real-time
+        // This ensures even if the user doesn't select from dropdown, we capture their intent
+        if (query.length > 0) {
+          const directMatch = bangs.find(b => b.t.toLowerCase() === query);
+          if (directMatch) {
+            this.selectedBangItem = directMatch;
+          }
+        }
+        
+        // Skip showing dropdown if query is too short and we already have a selection
+        if (query.length < 1 && this.selectedBangItem) {
+          if (this.bangDropdown) {
+            this.bangDropdown.hide();
+          }
+          return;
+        }
+        
+        if (this.bangDropdown) {
+          this.bangDropdown.show(query);
+        }
+      });
+      
+      // Add focus event handler
+      this.defaultBangInput.addEventListener('focus', () => {
+        const query = this.defaultBangInput?.value.toLowerCase().replace(/^!/, '') || '';
+        if (query.length > 0 || !this.selectedBangItem) {
+          if (this.bangDropdown) {
+            this.bangDropdown.show(query);
+          }
+        }
+      });
+    }
     
     return section;
   }
   
   /**
-   * Shows the bang dropdown with filtered options
+   * Handles bang selection from dropdown
    */
-  private showBangDropdown(): void {
-    if (!this.defaultBangInput || !this.defaultBangDropdown) return;
-    
-    const query = this.defaultBangInput.value.toLowerCase().replace(/^!/, '');
-    
-    // Skip if query is too short and we already have a selection
-    if (query.length < 1 && this.selectedBangItem) {
-      this.hideBangDropdown();
-      return;
-    }
-    
-    // Filter and sort bangs based on the query
-    const filteredBangs = this.filterAndSortBangs(query);
-    
-    if (filteredBangs.length === 0) {
-      this.hideBangDropdown();
-      return;
-    }
-    
-    // Clear previous content
-    this.defaultBangDropdown.innerHTML = '';
-    
-    // Create dropdown items
-    filteredBangs.forEach((bang) => {
-      const item = this.createBangItem(bang);
-      this.defaultBangDropdown?.appendChild(item);
-    });
-    
-    // Position the dropdown based on the input's position
-    const inputRect = this.defaultBangInput.getBoundingClientRect();
-    this.defaultBangDropdown.style.width = `${inputRect.width}px`;
-    this.defaultBangDropdown.style.left = `${inputRect.left}px`;
-    this.defaultBangDropdown.style.top = `${inputRect.bottom + 8}px`; // 8px is equivalent to mt-2
-    
-    // Show dropdown
-    this.defaultBangDropdown.style.display = 'block';
-  }
-  
-  /**
-   * Filters and sorts bangs based on the query
-   */
-  private filterAndSortBangs(query: string): BangItem[] {
-    // Calculate match scores for each bang
-    const withMatchScores = bangs.map(bang => {
-      // Full service name match score (prioritized first)
-      const serviceName = bang.s.toLowerCase();
-      const serviceNameMatch = serviceName.includes(query);
-      const isExactServiceMatch = serviceName === query;
-      
-      // Shortcut match score
-      const shortcutName = bang.t.toLowerCase();
-      const shortcutMatch = shortcutName.includes(query);
-      const isExactShortcutMatch = shortcutName === query;
-      
-      // Calculate overall match score (lower = better match)
-      let matchScore = 100;
-      
-      if (isExactServiceMatch) {
-        matchScore = 0; // Exact service name match is best
-      } else if (isExactShortcutMatch) {
-        matchScore = 1; // Exact shortcut match is next best
-      } else if (serviceNameMatch) {
-        // Service name contains query - score based on how close to full match
-        matchScore = 2 + (serviceName.length - query.length);
-      } else if (shortcutMatch) {
-        // Shortcut contains query - slightly lower priority than service name
-        matchScore = 10 + (shortcutName.length - query.length);
-      } else {
-        // No direct match, probably shouldn't show
-        matchScore = 1000;
-      }
-      
-      return {
-        bang,
-        matchScore
-      };
-    });
-    
-    // Filter out bad matches
-    const goodMatches = withMatchScores.filter(item => item.matchScore < 100);
-    
-    // Deduplicate by service name, keeping the best match for each service
-    const deduplicated: BangItem[] = [];
-    const seenServices = new Set<string>();
-    
-    // Sort by match score before deduplication
-    goodMatches.sort((a, b) => a.matchScore - b.matchScore);
-    
-    for (const item of goodMatches) {
-      // Normalize service name for comparison
-      const serviceName = item.bang.s.toLowerCase();
-      
-      // If we haven't seen this service yet, add it
-      if (!seenServices.has(serviceName)) {
-        seenServices.add(serviceName);
-        deduplicated.push(item.bang);
-      }
-    }
-    
-    return deduplicated.slice(0, 10); // Limit to 10 results
-  }
-  
-  /**
-   * Hides the bang dropdown
-   */
-  private hideBangDropdown(): void {
-    if (this.defaultBangDropdown) {
-      this.defaultBangDropdown.style.display = 'none';
-    }
-  }
-  
-  /**
-   * Creates a bang item for the dropdown
-   */
-  private createBangItem(bang: BangItem): HTMLDivElement {
-    const item = createElement('div', {
-      className: 'bang-option px-4 py-3 hover:bg-[#2a004d]/70 cursor-pointer flex flex-col border-b border-white/5 last:border-b-0 transition-colors'
-    });
-    
-    // First line: Shortcut and Service name
-    const titleRow = createElement('div', {
-      className: 'flex items-center justify-between'
-    });
-    
-    const shortcut = createElement('span', {
-      className: 'font-mono text-[#3a86ff] font-bold'
-    }, [`!${bang.t}`]);
-    
-    const service = createElement('span', {
-      className: 'text-white font-medium'
-    }, [bang.s]);
-    
-    titleRow.append(shortcut, service);
-    
-    // Second line: Website and Category
-    const detailRow = createElement('div', {
-      className: 'flex items-center justify-between mt-1 text-sm'
-    });
-    
-    const website = createElement('span', {
-      className: 'text-white/60'
-    }, [bang.d]);
-    
-    const category = createElement('span', {
-      className: 'text-white/40 text-xs px-2 py-0.5 bg-[#3a86ff]/10 rounded-full'
-    }, [`${bang.c || ''}${bang.sc && bang.sc !== bang.c ? ` · ${bang.sc}` : ''}`]);
-    
-    detailRow.append(website, category);
-    
-    item.append(titleRow, detailRow);
-    
-    // Add click event to select the bang
-    item.addEventListener('click', () => {
-      if (this.defaultBangInput) {
-        this.defaultBangInput.value = `!${bang.t} - ${bang.s}`;
-        this.selectedBangItem = bang;
-        this.settings.defaultBang = bang.t;
-        this.hideBangDropdown();
-      }
-    });
-    
-    return item;
-  }
-  
-  /**
-   * Handles dropdown navigation
-   */
-  private navigateDropdown(currentIndex: number, direction: number, items: NodeListOf<Element>): void {
-    // Calculate new index
-    const newIndex = Math.max(0, Math.min(items.length - 1, currentIndex + direction));
-    
-    // Remove highlight from previous item
-    if (currentIndex >= 0 && currentIndex < items.length) {
-      items[currentIndex].classList.remove('bg-[#2a004d]/70');
-    }
-    
-    // Highlight new item
-    items[newIndex].classList.add('bg-[#2a004d]/70');
-    
-    // Scroll item into view if needed
-    (items[newIndex] as HTMLElement).scrollIntoView({
-      block: 'nearest',
-      behavior: 'smooth'
-    });
-  }
-  
-  /**
-   * Cleanup method to remove dropdown from DOM when no longer needed
-   */
-  public cleanup(): void {
-    if (this.defaultBangDropdown && document.body.contains(this.defaultBangDropdown)) {
-      document.body.removeChild(this.defaultBangDropdown);
+  private handleBangSelection(bangText: string): void {
+    const matchingBang = bangs.find(b => b.t === bangText);
+    if (matchingBang && this.defaultBangInput) {
+      this.defaultBangInput.value = `!${matchingBang.t} - ${matchingBang.s}`;
+      this.selectedBangItem = matchingBang;
+      this.settings.defaultBang = matchingBang.t;
     }
   }
 } 

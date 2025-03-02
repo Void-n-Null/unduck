@@ -1,8 +1,10 @@
 import { bangs } from "../bang";
+import { loadSettings } from "./settings";
 
-// Default to Google search if no bang is specified
-const LS_DEFAULT_BANG = localStorage.getItem("default-bang") ?? "g";
-const defaultBang = bangs.find((b) => b.t === LS_DEFAULT_BANG);
+// Get default bang from settings module instead of direct localStorage access
+const userSettings = loadSettings();
+const defaultBang = bangs.find((b) => b.t === userSettings.defaultBang) || 
+  bangs.find((b) => b.t === "g"); // Fallback to Google if not found
 
 /**
  * Array of recursive function jokes

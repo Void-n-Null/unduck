@@ -6,6 +6,9 @@ export interface BangDropdownOptions {
   maxItems?: number;
   maxHeight?: string;
   onSelectBang?: (bangText: string) => void;
+  appendTo?: HTMLElement; // Element to append the dropdown to (default: input parent)
+  positionStyle?: 'absolute' | 'fixed'; // Positioning style (default: absolute)
+  zIndex?: number; // z-index for the dropdown (default: 999)
 }
 
 export class BangDropdown {
@@ -51,6 +54,18 @@ export class BangDropdown {
         }
       }
     });
+    
+    // Add window resize handler for fixed positioning
+    if (options.positionStyle === 'fixed' && options.appendTo) {
+      window.addEventListener('resize', () => {
+        if (this.isVisible && this.container) {
+          const rect = this.inputElement.getBoundingClientRect();
+          this.container.style.left = `${rect.left}px`;
+          this.container.style.width = `${rect.width}px`;
+          this.container.style.top = `${rect.bottom + 2}px`;
+        }
+      });
+    }
   }
   
   // Add method to select the top option
@@ -86,6 +101,14 @@ export class BangDropdown {
     
     // Show dropdown with purple gradient background
     if (this.container) {
+      // If using fixed positioning, update position based on current input position
+      if (this.options.positionStyle === 'fixed' && this.options.appendTo) {
+        const rect = this.inputElement.getBoundingClientRect();
+        this.container.style.left = `${rect.left}px`;
+        this.container.style.width = `${rect.width}px`;
+        this.container.style.top = `${rect.bottom + 2}px`; // Adding small offset
+      }
+      
       this.container.style.display = 'block';
       this.container.style.background = 'linear-gradient(to bottom, rgba(45, 0, 30, 0.9), rgba(0, 0, 0, 0.95))';
       this.isVisible = true;
@@ -196,21 +219,39 @@ export class BangDropdown {
   
   private ensureContainer(): void {
     if (!this.container) {
-      // Create the container with a simpler approach
+      const positionStyle = this.options.positionStyle || 'absolute';
+      const zIndex = this.options.zIndex || 999;
+      
+      // Create the container with proper z-index
       this.container = createElement('div', {
-        className: `absolute z-[999] left-0 right-0 top-full mt-2 bg-black/90 border border-white/10 rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent`,
-        style: `max-height: ${this.options.maxHeight};`
+        className: `${positionStyle} left-0 right-0 top-full mt-2 bg-black/90 border border-white/10 rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent`,
+        style: `max-height: ${this.options.maxHeight}; z-index: ${zIndex};`
       });
       
-      // Append to the input wrapper to ensure proper positioning
-      const inputWrapper = this.inputElement.closest('.relative');
-      if (inputWrapper) {
-        inputWrapper.appendChild(this.container);
+      // Determine where to append the container
+      if (this.options.appendTo) {
+        // If appendTo is specified, use it
+        this.options.appendTo.appendChild(this.container);
+        
+        // Adjust position based on input element's position
+        if (this.options.positionStyle === 'fixed') {
+          const rect = this.inputElement.getBoundingClientRect();
+          this.container.style.left = `${rect.left}px`;
+          this.container.style.right = `${window.innerWidth - rect.right}px`;
+          this.container.style.top = `${rect.bottom}px`;
+          this.container.style.width = `${rect.width}px`;
+        }
       } else {
-        // Fallback to adding after input if wrapper not found
-        const parent = this.inputElement.parentElement;
-        if (parent) {
-          parent.appendChild(this.container);
+        // Default behavior - append to parent
+        const inputWrapper = this.inputElement.closest('.relative');
+        if (inputWrapper) {
+          inputWrapper.appendChild(this.container);
+        } else {
+          // Fallback to adding after input if wrapper not found
+          const parent = this.inputElement.parentElement;
+          if (parent) {
+            parent.appendChild(this.container);
+          }
         }
       }
     }
