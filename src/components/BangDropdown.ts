@@ -1,6 +1,7 @@
 import { createElement } from "../utils/dom";
 import { bangs } from "../bang";
-import { filterAndSortBangs, BangItem } from "../utils/bangUtils";
+import { filterAndSortBangs } from "../utils/bangUtils";
+import { BangItem } from "../types/BangItem";
 
 export interface BangDropdownOptions {
   maxItems?: number;

@@ -6,7 +6,8 @@ import {
   updateSetting,
   UserSettings 
 } from "../utils/settings";
-import { BangItem, filterAndSortBangs } from "../utils/bangUtils";
+import { filterAndSortBangs } from "../utils/bangUtils";
+import { BangItem } from "../types/BangItem";
 import { BangDropdown } from "./BangDropdown";
 
 export class SettingsModal {
