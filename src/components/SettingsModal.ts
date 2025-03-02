@@ -156,6 +156,13 @@ export class SettingsModal {
     }, ['Save Settings']);
     saveButton.addEventListener('click', () => {
       saveSettings(this.settings);
+      // Save default bang to local storage if set
+      if (this.settings.defaultBang) {
+        localStorage.setItem('defaultBang', this.settings.defaultBang);
+      } else {
+        localStorage.removeItem('defaultBang'); // Remove if not set to fall back on default
+      }
+
       this.onSettingsChange(this.settings);
       this.hide();
     });
