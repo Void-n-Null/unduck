@@ -35065,6 +35065,15 @@ export const bangs = [{
   },
 {
     c: "Entertainment",
+    d: "minecraft.wiki",
+    r: 0,
+    s: "Minecraft Wiki",
+    sc: "Games (Minecraft)",
+    t: "minecraft",
+    u: "https://minecraft.wiki/w/Special:Search?search={{{s}}}",
+  },
+{
+    c: "Entertainment",
     d: "minecraft-seeds.net",
     r: 0,
     s: "Minecraft Seeds",
